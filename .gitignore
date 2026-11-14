@@ -1,0 +1,32 @@
+# Временные файлы редакторов
+*.swp
+*.swo
+*~
+
+# Логи и кэш
+*.log
+logs/
+tmp/
+temp/
+
+# ОС
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Сборка и артефакты
+build/
+dist/
+target/
+out/
+
+# Зависимости (часто тяжёлые)
+node_modules/
+vendor/
+
+# Исключения: если нужен какой-то конкретный лог
+!important.log
