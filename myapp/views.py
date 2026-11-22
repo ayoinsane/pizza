@@ -1,10 +1,11 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
@@ -14,6 +15,46 @@ from .serializers import (
     CartSerializer, CartItemSerializer, 
     OrderSerializer
 )
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_view(request):
+    username = request.data.get('username')
+    password = request.data.get('password')
+    
+    if not username or not password:
+        return Response({'error': 'Введите логин и пароль'}, status=400)
+        
+    if User.objects.filter(username=username).exists():
+        return Response({'error': 'Пользователь с таким логином уже существует'}, status=400)
+        
+    user = User.objects.create_user(username=username, password=password)
+    login(request, user)
+    return Response({'message': 'Успешная регистрация', 'username': user.username})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    username = request.data.get('username')
+    password = request.data.get('password')
+    
+    user = authenticate(username=username, password=password)
+    if user is not None:
+        login(request, user)
+        return Response({'message': 'Успешный вход', 'username': user.username})
+    else:
+        return Response({'error': 'Неверный логин или пароль'}, status=400)
+
+@api_view(['POST'])
+def logout_view(request):
+    logout(request)
+    return Response({'message': 'Вы вышли из системы'})
+
+@api_view(['GET'])
+def user_info_view(request):
+    if request.user.is_authenticated:
+        return Response({'is_authenticated': True, 'username': request.user.username})
+    return Response({'is_authenticated': False})
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Category.objects.all()
@@ -28,26 +69,14 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
 @method_decorator(csrf_exempt, name='dispatch')
 class CartViewSet(viewsets.ModelViewSet):
     serializer_class = CartSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.is_authenticated:
-            return Cart.objects.filter(user=self.request.user)
-        user = User.objects.first()
-        if user:
-            cart, _ = Cart.objects.get_or_create(user=user)
-            return Cart.objects.filter(user=user)
-        return Cart.objects.none()
+        return Cart.objects.filter(user=self.request.user)
 
     @action(detail=False, methods=['post'])
     def add_item(self, request):
-        user = request.user
-        if not user.is_authenticated:
-            user = User.objects.first()
-            if not user:
-                return Response({'error': 'Нет пользователей в базе'}, status=status.HTTP_400_BAD_REQUEST)
-
-        cart, _ = Cart.objects.get_or_create(user=user)
+        cart, _ = Cart.objects.get_or_create(user=request.user)
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 1))
         
@@ -64,11 +93,7 @@ class CartViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def remove_item(self, request):
-        user = request.user
-        if not user.is_authenticated:
-            user = User.objects.first()
-            
-        cart, _ = Cart.objects.get_or_create(user=user)
+        cart, _ = Cart.objects.get_or_create(user=request.user)
         item_id = request.data.get('item_id')
         
         item = get_object_or_404(CartItem, id=item_id, cart=cart)
@@ -77,22 +102,13 @@ class CartViewSet(viewsets.ModelViewSet):
 
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.is_authenticated:
-            return Order.objects.filter(user=self.request.user).order_by('-created_at')
-        user = User.objects.first()
-        if user:
-            return Order.objects.filter(user=user).order_by('-created_at')
-        return Order.objects.none()
+        return Order.objects.filter(user=self.request.user).order_by('-created_at')
 
     def create(self, request, *args, **kwargs):
-        user = request.user
-        if not user.is_authenticated:
-            user = User.objects.first()
-
-        cart = get_object_or_404(Cart, user=user)
+        cart = get_object_or_404(Cart, user=request.user)
         cart_items = cart.items.all()
 
         if not cart_items:
@@ -108,7 +124,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             order = Order.objects.create(
-                user=user,
+                user=request.user,
                 address=address,
                 comment=comment,
                 total_price=total_price,

@@ -18,12 +18,22 @@
           >
             Меню
           </button>
+          
           <button 
+            v-if="currentUser"
             @click="loadOrders(); activeTab = 'orders'"
             class="px-4 py-2 rounded-full font-medium transition-all"
             :class="activeTab === 'orders' ? 'bg-[#1C1917] text-white' : 'hover:bg-[#F5F2EC] text-[#57534E]'"
           >
             Мои заказы
+          </button>
+
+          <div v-if="currentUser" class="flex items-center gap-3">
+            <span class="text-sm font-bold text-[#57534E]">👤 {{ currentUser }}</span>
+            <button @click="handleLogout" class="text-sm text-red-500 hover:underline">Выйти</button>
+          </div>
+          <button v-else @click="isAuthOpen = true" class="px-4 py-2 rounded-full font-medium bg-[#1C1917] text-white hover:bg-black transition-all">
+            Войти
           </button>
 
           <button 
@@ -205,12 +215,19 @@
       </div>
     </div>
 
+    <AuthModal 
+      v-if="isAuthOpen" 
+      @close="isAuthOpen = false" 
+      @success="isAuthOpen = false; checkAuth()" 
+    />
+
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from './services/api'
+import AuthModal from './components/AuthModal.vue'
 
 const activeTab = ref('catalog')
 const categories = ref([])
@@ -219,26 +236,56 @@ const cart = ref(null)
 const orders = ref([])
 const selectedCategory = ref(null)
 const isCartOpen = ref(false)
+const isAuthOpen = ref(false)
+const currentUser = ref(null)
 
 const orderAddress = ref('')
 const orderComment = ref('')
 
+const checkAuth = async () => {
+  try {
+    const res = await api.getUserInfo()
+    if (res.data.is_authenticated) {
+      currentUser.value = res.data.username
+      loadData()
+    } else {
+      currentUser.value = null
+      cart.value = { items: [] }
+      orders.value = []
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const handleLogout = async () => {
+  await api.logout()
+  currentUser.value = null
+  cart.value = { items: [] }
+  orders.value = []
+  activeTab.value = 'catalog'
+}
+
 const loadData = async () => {
   try {
-    const [catRes, prodRes, cartRes] = await Promise.all([
+    const [catRes, prodRes] = await Promise.all([
       api.getCategories(),
-      api.getProducts(),
-      api.getCart().catch(() => ({ data: null }))
+      api.getProducts()
     ])
     categories.value = catRes.data
     products.value = prodRes.data
-    cart.value = cartRes.data && cartRes.data.length > 0 ? cartRes.data[0] : { items: [] }
+    
+    if (currentUser.value) {
+      const cartRes = await api.getCart().catch(() => ({ data: [] }))
+      cart.value = cartRes.data && cartRes.data.length > 0 ? cartRes.data[0] : { items: [] }
+    }
   } catch (e) {
     console.error('Ошибка загрузки данных:', e)
   }
 }
 
 const loadOrders = async () => {
+  if (!currentUser.value) return
   try {
     const res = await api.getOrders()
     orders.value = res.data
@@ -263,13 +310,17 @@ const cartTotalPrice = computed(() => {
 })
 
 const addToCart = async (productId) => {
+  if (!currentUser.value) {
+    isAuthOpen.value = true
+    return
+  }
   try {
     await api.addToCart(productId, 1)
     const cartRes = await api.getCart()
     cart.value = cartRes.data && cartRes.data.length > 0 ? cartRes.data[0] : { items: [] }
     isCartOpen.value = true
   } catch (e) {
-    alert('Ошибка! Убедитесь, что вы авторизованы в админке Django (http://127.0.0.1:8000/admin/)')
+    console.error(e)
   }
 }
 
@@ -314,5 +365,6 @@ const getStatusBadge = (status) => {
 
 onMounted(() => {
   loadData()
+  checkAuth()
 })
 </script>

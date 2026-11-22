@@ -37,5 +37,9 @@ export default {
   addToCart(productId, quantity = 1) { return API.post('cart/add_item/', { product_id: productId, quantity }) },
   removeFromCart(itemId) { return API.post('cart/remove_item/', { item_id: itemId }) },
   getOrders() { return API.get('orders/') },
-  createOrder(address, comment) { return API.post('orders/', { address, comment }) }
+  createOrder(address, comment) { return API.post('orders/', { address, comment }) },
+  login(username, password) { return API.post('auth/login/', { username, password }) },
+  register(username, password) { return API.post('auth/register/', { username, password }) },
+  logout() { return API.post('auth/logout/') },
+  getUserInfo() { return API.get('auth/user/') }
 }

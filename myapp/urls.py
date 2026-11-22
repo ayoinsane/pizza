@@ -10,4 +10,8 @@ router.register(r'orders', views.OrderViewSet, basename='orders')
 
 urlpatterns = [
     path('api/', include(router.urls)),
+    path('api/auth/register/', views.register_view),
+    path('api/auth/login/', views.login_view),
+    path('api/auth/logout/', views.logout_view),
+    path('api/auth/user/', views.user_info_view),
 ]
